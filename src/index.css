@@ -156,3 +156,5 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #bcd0f5; border-c
   .two, .split { grid-template-columns: 1fr; }
   .who { margin-left: 0; }
 }
+.field-error { color: var(--danger); font-size: 12px; }
+.field input[aria-invalid='true'], .field select[aria-invalid='true'], .field textarea[aria-invalid='true'] { border-color: var(--danger); }

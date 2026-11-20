@@ -1,8 +1,9 @@
 import { HttpResponse, delay, http } from 'msw';
-import type { Booking, BookingStatus, Customer, Role } from '../types';
+import type { Booking, Customer, Role } from '../types';
+import { bookingInputSchema, bookingStatusSchema, customerInputSchema, firstIssue } from '../domain/schemas';
 import { validateBooking } from '../domain/booking';
 import { commit, db, newId, resetDb } from './db';
-import { ROLE_HEADER, type ApiErrorBody, type BookingInput, type CustomerInput, type StatusInput } from './types';
+import { ROLE_HEADER, type ApiErrorBody } from './types';
 
 /**
  * 擬似API（MSW）。本番構成では API Gateway + Lambda が受け持つ部分。
@@ -10,7 +11,6 @@ import { ROLE_HEADER, type ApiErrorBody, type BookingInput, type CustomerInput, 
  */
 
 const LATENCY_MS = 150;
-const STATUSES: BookingStatus[] = ['reserved', 'visited', 'cancelled'];
 
 function error(status: number, code: string, message: string) {
   return HttpResponse.json<ApiErrorBody>({ code, message }, { status });
@@ -22,13 +22,19 @@ function roleOf(request: Request): Role {
 
 const forbidden = () => error(403, 'forbidden', 'この操作は管理者のみ行えます。');
 
-function checkBooking(b: Booking) {
+/**
+ * 予約の入力を検証する。形と長さは Zod のスキーマ（画面のフォームと共通）、
+ * 重なり・営業時間などの業務ルールは validateBooking（画面と共通）で確認する。
+ */
+async function parseBooking(request: Request, id: string): Promise<{ booking: Booking } | { response: Response }> {
+  const parsed = bookingInputSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return { response: error(422, 'invalid', firstIssue(parsed.error)) };
+  const booking: Booking = { ...parsed.data, id };
   const data = db();
-  if (!data.staff.some((s) => s.id === b.staffId)) return error(422, 'invalid', '担当者が見つかりません。');
-  if (!data.menus.some((m) => m.id === b.menuId)) return error(422, 'invalid', 'メニューが見つかりません。');
-  if (!STATUSES.includes(b.status)) return error(422, 'invalid', '状態が正しくありません。');
-  const err = validateBooking(b, data);
-  return err ? error(422, err.code, err.message) : null;
+  if (!data.staff.some((s) => s.id === booking.staffId)) return { response: error(422, 'invalid', '担当者が見つかりません。') };
+  if (!data.menus.some((m) => m.id === booking.menuId)) return { response: error(422, 'invalid', 'メニューが見つかりません。') };
+  const err = validateBooking(booking, data);
+  return err ? { response: error(422, err.code, err.message) } : { booking };
 }
 
 export const handlers = [
@@ -54,10 +60,9 @@ export const handlers = [
 
   http.post('*/api/bookings', async ({ request }) => {
     await delay(LATENCY_MS);
-    const input = (await request.json()) as BookingInput;
-    const booking: Booking = { ...input, id: newId('b') };
-    const invalid = checkBooking(booking);
-    if (invalid) return invalid;
+    const result = await parseBooking(request, newId('b'));
+    if ('response' in result) return result.response;
+    const { booking } = result;
     const data = db();
     commit({ ...data, bookings: [...data.bookings, booking] });
     return HttpResponse.json(booking, { status: 201 });
@@ -67,9 +72,9 @@ export const handlers = [
     await delay(LATENCY_MS);
     const data = db();
     if (!data.bookings.some((b) => b.id === params.id)) return error(404, 'notFound', '予約が見つかりません。');
-    const booking: Booking = { ...((await request.json()) as BookingInput), id: String(params.id) };
-    const invalid = checkBooking(booking);
-    if (invalid) return invalid;
+    const result = await parseBooking(request, String(params.id));
+    if ('response' in result) return result.response;
+    const { booking } = result;
     commit({ ...data, bookings: data.bookings.map((b) => (b.id === booking.id ? booking : b)) });
     return HttpResponse.json(booking);
   }),
@@ -79,9 +84,9 @@ export const handlers = [
     const data = db();
     const current = data.bookings.find((b) => b.id === params.id);
     if (!current) return error(404, 'notFound', '予約が見つかりません。');
-    const { status } = (await request.json()) as StatusInput;
-    if (!STATUSES.includes(status)) return error(422, 'invalid', '状態が正しくありません。');
-    const updated = { ...current, status };
+    const parsed = bookingStatusSchema.safeParse(((await request.json().catch(() => null)) as { status?: unknown } | null)?.status);
+    if (!parsed.success) return error(422, 'invalid', firstIssue(parsed.error));
+    const updated = { ...current, status: parsed.data };
     commit({ ...data, bookings: data.bookings.map((b) => (b.id === updated.id ? updated : b)) });
     return HttpResponse.json(updated);
   }),
@@ -97,9 +102,9 @@ export const handlers = [
 
   http.post('*/api/customers', async ({ request }) => {
     await delay(LATENCY_MS);
-    const input = (await request.json()) as CustomerInput;
-    if (!input.name?.trim()) return error(422, 'invalid', '氏名を入力してください。');
-    const customer: Customer = { ...input, name: input.name.trim(), id: newId('c'), createdAt: new Date().toISOString() };
+    const parsed = customerInputSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) return error(422, 'invalid', firstIssue(parsed.error));
+    const customer: Customer = { ...parsed.data, id: newId('c'), createdAt: new Date().toISOString() };
     const data = db();
     commit({ ...data, customers: [...data.customers, customer] });
     return HttpResponse.json(customer, { status: 201 });
@@ -110,9 +115,9 @@ export const handlers = [
     const data = db();
     const current = data.customers.find((c) => c.id === params.id);
     if (!current) return error(404, 'notFound', 'お客様が見つかりません。');
-    const input = (await request.json()) as CustomerInput;
-    if (!input.name?.trim()) return error(422, 'invalid', '氏名を入力してください。');
-    const customer: Customer = { ...current, ...input, name: input.name.trim(), id: current.id };
+    const parsed = customerInputSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) return error(422, 'invalid', firstIssue(parsed.error));
+    const customer: Customer = { ...current, ...parsed.data, id: current.id };
     commit({ ...data, customers: data.customers.map((c) => (c.id === customer.id ? customer : c)) });
     return HttpResponse.json(customer);
   }),
@@ -120,11 +125,17 @@ export const handlers = [
   http.post('*/api/customers/import', async ({ request }) => {
     await delay(LATENCY_MS);
     if (roleOf(request) !== 'admin') return forbidden();
-    const inputs = (await request.json()) as CustomerInput[];
+    const rows = await request.json().catch(() => null);
+    if (!Array.isArray(rows)) return error(422, 'invalid', '取り込むデータの形式が正しくありません。');
     const now = new Date().toISOString();
-    const created: Customer[] = inputs
-      .filter((c) => c.name?.trim())
-      .map((c) => ({ ...c, name: c.name.trim(), id: newId('c'), createdAt: now }));
+    // 氏名が空の行は飛ばす。それ以外で形式が合わない行があれば、何行目かを返して全体を取り込まない
+    const created: Customer[] = [];
+    for (const [i, row] of rows.entries()) {
+      if (!String((row as { name?: unknown })?.name ?? '').trim()) continue;
+      const parsed = customerInputSchema.safeParse(row);
+      if (!parsed.success) return error(422, 'invalid', `${i + 2}行目：${firstIssue(parsed.error)}`);
+      created.push({ ...parsed.data, id: newId('c'), createdAt: now });
+    }
     const data = db();
     commit({ ...data, customers: [...data.customers, ...created] });
     return HttpResponse.json({ imported: created.length }, { status: 201 });

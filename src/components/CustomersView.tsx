@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import type { Customer } from '../types';
 import { STATUS_LABEL } from '../types';
-import { useAppData, useImportCustomers, useSaveCustomer } from '../api/hooks';
+import { useAppData, useImportCustomers } from '../api/hooks';
+import { CustomerFormModal } from './CustomerFormModal';
 import type { CustomerInput } from '../api/types';
 import { useRole } from '../role';
 import { fmtDateLong, fmtTime, yen } from '../lib/date';
@@ -19,7 +20,6 @@ function mask(s: string): string {
 export function CustomersView({ onToast }: Props) {
   const data = useAppData();
   const { role } = useRole();
-  const saveCustomer = useSaveCustomer();
   const importCustomers = useImportCustomers();
   const isAdmin = role === 'admin';
   const [query, setQuery] = useState('');
@@ -75,25 +75,6 @@ export function CustomersView({ onToast }: Props) {
       onSuccess: (r) => onToast(`${r.imported}件の顧客を取り込みました`),
       onError: (e) => onToast(e.message),
     });
-  }
-
-  function saveEdit() {
-    if (!editing) return;
-    if (!editing.name.trim()) {
-      onToast('氏名を入力してください');
-      return;
-    }
-    saveCustomer.mutate(
-      { ...editing, name: editing.name.trim() },
-      {
-        onSuccess: (saved) => {
-          setSelectedId(saved.id); // 新規は擬似APIが採番した id になる
-          setEditing(null);
-          onToast('顧客情報を保存しました');
-        },
-        onError: (e) => onToast(e.message),
-      },
-    );
   }
 
   return (
@@ -242,36 +223,15 @@ export function CustomersView({ onToast }: Props) {
         </div>
       )}
       {editing && (
-        <div className="overlay" onMouseDown={() => setEditing(null)}>
-          <div className="modal" role="dialog" aria-label="顧客情報" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <h2>顧客情報</h2>
-              <button className="icon" onClick={() => setEditing(null)} aria-label="閉じる">×</button>
-            </div>
-            <div className="grid2">
-              <label className="field"><span>氏名</span>
-                <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-              </label>
-              <label className="field"><span>フリガナ</span>
-                <input value={editing.kana} onChange={(e) => setEditing({ ...editing, kana: e.target.value })} />
-              </label>
-              <label className="field"><span>電話番号</span>
-                <input value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} />
-              </label>
-              <label className="field"><span>メール</span>
-                <input type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
-              </label>
-            </div>
-            <label className="field"><span>接客メモ</span>
-              <textarea rows={3} value={editing.note} onChange={(e) => setEditing({ ...editing, note: e.target.value })} />
-            </label>
-            <div className="modal-foot">
-              <span className="spacer" />
-              <button className="ghost" onClick={() => setEditing(null)}>キャンセル</button>
-              <button className="primary" onClick={saveEdit}>保存</button>
-            </div>
-          </div>
-        </div>
+        <CustomerFormModal
+          customer={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(saved) => {
+            setSelectedId(saved.id); // 新規は擬似APIが採番した id になる
+            setEditing(null);
+            onToast('顧客情報を保存しました');
+          }}
+        />
       )}
     </section>
   );

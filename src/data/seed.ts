@@ -1,5 +1,5 @@
 import type { AppData, Booking, Customer, Menu, Staff } from '../types';
-import { addDays, CLOSE_HOUR, OPEN_HOUR, startOfDay, startOfWeek } from '../lib/date';
+import { addDays, CLOSE_HOUR, OPEN_HOUR, overlaps, startOfDay, startOfWeek } from '../lib/date';
 
 // すべて架空のデータです（実在の人物・店舗とは関係ありません）
 
@@ -70,7 +70,21 @@ export function createSeed(today = new Date()): AppData {
 
   const bookings: Booking[] = [];
   let id = 1;
-  const push = (b: Omit<Booking, 'id'>) => bookings.push({ ...b, id: `b${id++}` });
+  /**
+   * 予約を追加する。同じ担当者の予約と時間が重なる場合は追加せず false を返す
+   * （サンプルデータもアプリ自身のルールを満たすようにするため）
+   */
+  const push = (b: Omit<Booking, 'id'>): boolean => {
+    if (b.status !== 'cancelled') {
+      const start = new Date(b.start);
+      const clash = bookings.some(
+        (o) => o.staffId === b.staffId && o.status !== 'cancelled' && overlaps(new Date(o.start), o.minutes, start, b.minutes),
+      );
+      if (clash) return false;
+    }
+    bookings.push({ ...b, id: `b${id++}` });
+    return true;
+  };
 
   // 過去3か月の来店履歴
   for (let back = 90; back >= 1; back -= 1) {
@@ -133,7 +147,7 @@ export function createSeed(today = new Date()): AppData {
           const start = new Date(day);
           start.setHours(0, cursor);
           const past = start.getTime() < today.getTime();
-          push({
+          const added = push({
             // 末尾3名は先の予約を入れない（フォロー候補の例として表示するため）
             customerId: pickFuture(),
             staffId: s.id,
@@ -143,7 +157,8 @@ export function createSeed(today = new Date()): AppData {
             status: past ? 'visited' : 'reserved',
             memo: r() < 0.25 ? 'Web予約。初回クーポン利用。' : '',
           });
-          cursor += menu.minutes + 30;
+          // 過去の来店履歴と重なって入れられなかった枠は、1時間先から探し直す
+          cursor += added ? menu.minutes + 30 : 60;
         } else {
           cursor += 60;
         }

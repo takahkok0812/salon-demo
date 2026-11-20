@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { QueryErrorResetBoundary } from '@tanstack/react-query';
 import type { Booking, Role } from './types';
 import { ROLE_LABEL } from './types';
-import { useStore } from './store';
+import { useRole } from './role';
+import { useResetData } from './api/hooks';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { DashboardView } from './components/DashboardView';
 import { CalendarView } from './components/CalendarView';
 import { CustomersView } from './components/CustomersView';
@@ -22,7 +25,8 @@ interface ModalState {
 }
 
 export default function App() {
-  const { state, dispatch } = useStore();
+  const { role, setRole } = useRole();
+  const reset = useResetData();
   const [view, setView] = useState<View>('dashboard');
   const [modal, setModal] = useState<ModalState | null>(null);
   const [toast, setToast] = useState('');
@@ -55,7 +59,7 @@ export default function App() {
         <div className="who">
           <label>
             ログイン中の権限
-            <select value={state.role} onChange={(e) => dispatch({ type: 'setRole', role: e.target.value as Role })}>
+            <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
               {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
                 <option key={r} value={r}>{ROLE_LABEL[r]}</option>
               ))}
@@ -63,10 +67,13 @@ export default function App() {
           </label>
           <button
             className="ghost small"
-            onClick={() => {
-              dispatch({ type: 'reset' });
-              setToast('サンプルデータに戻しました');
-            }}
+            disabled={reset.isPending}
+            onClick={() =>
+              reset.mutate(undefined, {
+                onSuccess: () => setToast('サンプルデータに戻しました'),
+                onError: (e) => setToast(e.message),
+              })
+            }
           >
             データを初期化
           </button>
@@ -74,29 +81,37 @@ export default function App() {
       </header>
 
       <main>
-        {view === 'dashboard' && <DashboardView onOpen={(b) => open(b)} />}
-        {view === 'calendar' && <CalendarView onOpen={open} />}
-        {view === 'customers' && <CustomersView onToast={setToast} />}
+        <QueryErrorResetBoundary>
+          {({ reset: resetQueries }) => (
+            <ErrorBoundary onReset={resetQueries}>
+              <Suspense fallback={<p className="panel state-box" role="status">読み込み中…</p>}>
+                {view === 'dashboard' && <DashboardView onOpen={(b) => open(b)} />}
+                {view === 'calendar' && <CalendarView onOpen={open} />}
+                {view === 'customers' && <CustomersView onToast={setToast} />}
+                {modal && (
+                  <BookingModal
+                    booking={modal.booking}
+                    defaultStart={modal.start}
+                    defaultStaffId={modal.staffId}
+                    onClose={() => setModal(null)}
+                    onSaved={(msg) => {
+                      setModal(null);
+                      setToast(msg);
+                    }}
+                    onToast={setToast}
+                  />
+                )}
+              </Suspense>
+            </ErrorBoundary>
+          )}
+        </QueryErrorResetBoundary>
       </main>
 
       <footer className="foot">
-        画面はReact + TypeScriptで作成したデモです。データはこのブラウザ内にだけ保存されます。
+        画面はReact + TypeScriptで作成したデモです。データは擬似API（MSW）を通してこのブラウザ内にだけ保存されます。
         本番構成ではAWS（API Gateway・Lambda・DynamoDB）に保存し、AI機能はClaude APIで生成します。
       </footer>
 
-      {modal && (
-        <BookingModal
-          booking={modal.booking}
-          defaultStart={modal.start}
-          defaultStaffId={modal.staffId}
-          onClose={() => setModal(null)}
-          onSaved={(msg) => {
-            setModal(null);
-            setToast(msg);
-          }}
-          onToast={setToast}
-        />
-      )}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );

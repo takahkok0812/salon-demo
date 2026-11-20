@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import type { Customer } from '../types';
 import { STATUS_LABEL } from '../types';
-import { newId, useStore } from '../store';
+import { useAppData, useImportCustomers, useSaveCustomer } from '../api/hooks';
+import type { CustomerInput } from '../api/types';
+import { useRole } from '../role';
 import { fmtDateLong, fmtTime, yen } from '../lib/date';
 import { summarizeCustomer, visitStats } from '../lib/ai';
 import { parseCsv, toCsv } from '../lib/csv';
@@ -15,8 +17,10 @@ function mask(s: string): string {
 }
 
 export function CustomersView({ onToast }: Props) {
-  const { state, dispatch } = useStore();
-  const { data, role } = state;
+  const data = useAppData();
+  const { role } = useRole();
+  const saveCustomer = useSaveCustomer();
+  const importCustomers = useImportCustomers();
   const isAdmin = role === 'admin';
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string>(data.customers[0]?.id ?? '');
@@ -58,19 +62,19 @@ export function CustomersView({ onToast }: Props) {
       onToast('「氏名」の列が見つかりませんでした');
       return;
     }
-    const customers: Customer[] = body
+    const customers: CustomerInput[] = body
       .filter((r) => r[idx('氏名')]?.trim())
       .map((r) => ({
-        id: newId('c'),
         name: r[idx('氏名')].trim(),
         kana: idx('フリガナ') >= 0 ? r[idx('フリガナ')] ?? '' : '',
         phone: idx('電話番号') >= 0 ? r[idx('電話番号')] ?? '' : '',
         email: idx('メール') >= 0 ? r[idx('メール')] ?? '' : '',
         note: idx('メモ') >= 0 ? r[idx('メモ')] ?? '' : '',
-        createdAt: new Date().toISOString(),
       }));
-    dispatch({ type: 'importCustomers', customers });
-    onToast(`${customers.length}件の顧客を取り込みました`);
+    importCustomers.mutate(customers, {
+      onSuccess: (r) => onToast(`${r.imported}件の顧客を取り込みました`),
+      onError: (e) => onToast(e.message),
+    });
   }
 
   function saveEdit() {
@@ -79,10 +83,17 @@ export function CustomersView({ onToast }: Props) {
       onToast('氏名を入力してください');
       return;
     }
-    dispatch({ type: 'saveCustomer', customer: { ...editing, name: editing.name.trim() } });
-    setSelectedId(editing.id);
-    setEditing(null);
-    onToast('顧客情報を保存しました');
+    saveCustomer.mutate(
+      { ...editing, name: editing.name.trim() },
+      {
+        onSuccess: (saved) => {
+          setSelectedId(saved.id); // 新規は擬似APIが採番した id になる
+          setEditing(null);
+          onToast('顧客情報を保存しました');
+        },
+        onError: (e) => onToast(e.message),
+      },
+    );
   }
 
   return (
@@ -92,7 +103,7 @@ export function CustomersView({ onToast }: Props) {
           <input className="search" placeholder="名前・カナ・電話番号で検索" value={query} onChange={(e) => setQuery(e.target.value)} />
           <button
             className="primary"
-            onClick={() => setEditing({ id: newId('c'), name: '', kana: '', phone: '', email: '', note: '', createdAt: new Date().toISOString() })}
+            onClick={() => setEditing({ id: '', name: '', kana: '', phone: '', email: '', note: '', createdAt: '' })}
           >
             ＋ 新規
           </button>

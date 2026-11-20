@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { Booking, BookingStatus } from '../types';
 import { STATUS_LABEL } from '../types';
-import { newId, useStore } from '../store';
+import { useAppData, useDeleteBooking, useSaveBooking } from '../api/hooks';
+import { useRole } from '../role';
 import { fromLocalInput, toLocalInput } from '../lib/date';
 import { validateBooking } from '../domain/booking';
 import { draftConfirmation } from '../lib/ai';
@@ -16,8 +17,11 @@ interface Props {
 }
 
 export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, onSaved, onToast }: Props) {
-  const { state, dispatch } = useStore();
-  const { data, role } = state;
+  const data = useAppData();
+  const { role } = useRole();
+  const saveBooking = useSaveBooking();
+  const deleteBooking = useDeleteBooking();
+  const busy = saveBooking.isPending || deleteBooking.isPending;
   const [customerId, setCustomerId] = useState(booking?.customerId ?? '');
   const [query, setQuery] = useState('');
   const [staffId, setStaffId] = useState(booking?.staffId ?? defaultStaffId ?? data.staff[0].id);
@@ -39,7 +43,7 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
 
   function build(): Booking {
     return {
-      id: booking?.id ?? newId('b'),
+      id: booking?.id ?? '', // 新規は空。採番は擬似API側で行う
       customerId,
       staffId,
       menuId,
@@ -57,14 +61,19 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
       setError(err.message);
       return;
     }
-    dispatch({ type: 'saveBooking', booking: b });
-    onSaved(booking ? '予約を更新しました' : '予約を登録しました');
+    // 画面で確認したルールは、擬似API側でも同じ関数で確認される（別の人が同じ枠を先に取った場合など）
+    saveBooking.mutate(b, {
+      onSuccess: () => onSaved(booking ? '予約を更新しました' : '予約を登録しました'),
+      onError: (e) => setError(e.message),
+    });
   }
 
   function remove() {
     if (!booking) return;
-    dispatch({ type: 'deleteBooking', id: booking.id });
-    onSaved('予約を削除しました');
+    deleteBooking.mutate(booking.id, {
+      onSuccess: () => onSaved('予約を削除しました'),
+      onError: (e) => setError(e.message),
+    });
   }
 
   function makeDraft() {
@@ -163,11 +172,11 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
 
         <div className="modal-foot">
           {booking && role === 'admin' && (
-            <button className="danger" onClick={remove}>削除</button>
+            <button className="danger" onClick={remove} disabled={busy}>削除</button>
           )}
           <span className="spacer" />
           <button className="ghost" onClick={onClose}>キャンセル</button>
-          <button className="primary" onClick={save}>保存</button>
+          <button className="primary" onClick={save} disabled={busy}>{saveBooking.isPending ? '保存中…' : '保存'}</button>
         </div>
       </div>
     </div>

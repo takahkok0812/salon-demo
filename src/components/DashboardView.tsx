@@ -1,6 +1,7 @@
 import type { Booking } from '../types';
 import { STATUS_LABEL } from '../types';
-import { useStore } from '../store';
+import { useAppData, useSetBookingStatus } from '../api/hooks';
+import { useRole } from '../role';
 import { addDays, fmtDate, fmtDateLong, fmtTime, sameDay, startOfDay, startOfWeek, yen } from '../lib/date';
 import { cancelRate, findFollowUps, monthSales } from '../domain/dashboard';
 
@@ -9,8 +10,9 @@ interface Props {
 }
 
 export function DashboardView({ onOpen }: Props) {
-  const { state, dispatch } = useStore();
-  const { data, role } = state;
+  const data = useAppData();
+  const { role } = useRole();
+  const setStatus = useSetBookingStatus();
   const isAdmin = role === 'admin';
   const now = new Date();
   const today = startOfDay(now);
@@ -69,7 +71,8 @@ export function DashboardView({ onOpen }: Props) {
                   </button>
                   <span className={`tag ${b.status}`}>{STATUS_LABEL[b.status]}</span>
                   {b.status === 'reserved' && start <= now && (
-                    <button className="ghost small" onClick={() => dispatch({ type: 'setStatus', id: b.id, status: 'visited' })}>
+                    <button className="ghost small" disabled={setStatus.isPending}
+                      onClick={() => setStatus.mutate({ id: b.id, status: 'visited' })}>
                       来店済みにする
                     </button>
                   )}

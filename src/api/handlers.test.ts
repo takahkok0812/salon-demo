@@ -70,6 +70,26 @@ describe('顧客API', () => {
     expect(res.status).toBe(403);
   });
 
+  it('フリガナがカタカナでなければ、画面と同じメッセージで 422', async () => {
+    const res = await call('customers', { method: 'POST', body: { name: '山田', kana: 'やまだ', phone: '', email: '', note: '' } });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { message: string }).message).toBe('フリガナはカタカナで入力してください');
+  });
+
+  it('CSV取り込みで形式の合わない行があれば、CSVの何行目かを返して1件も取り込まない', async () => {
+    const before = ((await (await call('customers')).json()) as unknown[]).length;
+    const res = await call('customers/import', {
+      method: 'POST',
+      body: [
+        { name: '正しい 行', kana: '', phone: '', email: '', note: '' },
+        { name: '誤り 行', kana: '', phone: '', email: 'not-an-email', note: '' },
+      ],
+    });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { message: string }).message).toMatch(/^3行目：/);
+    expect(((await (await call('customers')).json()) as unknown[]).length).toBe(before);
+  });
+
   it('CSV取り込みは氏名のある行だけを登録する', async () => {
     const res = await call('customers/import', {
       method: 'POST',

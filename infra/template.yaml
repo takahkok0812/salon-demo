@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  サロン予約・顧客管理（本番構成の設計）。
+  画面は S3 + CloudFront、API は API Gateway（HTTP API）+ Lambda、データは DynamoDB、ログインは Cognito。
+  デモ版ではブラウザ内の擬似API（MSW）が API Gateway + Lambda の役割を代わりに担っている。
+  ※ このテンプレートは設計の記録で、デプロイはしていない（Lambda の実装は server/ に置く想定）。
+
+Parameters:
+  Stage:
+    Type: String
+    AllowedValues: [dev, prod]
+    Default: dev
+  AllowedOrigin:
+    Type: String
+    Description: 画面を配信するドメイン（CORS で許可する）
+    Default: https://example.com
+  ClaudeApiKeyParameter:
+    Type: String
+    Description: Claude API キーを保存した SSM パラメータ名（SecureString、先頭の / なし）。キーはテンプレートやコードに書かない
+    Default: salon/claude-api-key
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 10
+    Tracing: Active
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref Table
+        STAGE: !Ref Stage
+
+Resources:
+  # ---- ログイン（管理者／スタッフはグループで分ける） ----
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub salon-${Stage}
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true # 店舗の管理者が招待した人だけが使える
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: OPTIONAL
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireUppercase: true
+          RequireSymbols: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: admin
+      Description: 売上・削除・CSV入出力ができる
+
+  StaffGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: staff
+      Description: 予約と顧客の閲覧・登録ができる（金額と削除は不可）
+
+  # ---- API ----
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      CorsConfiguration:
+        AllowOrigins: [!Ref AllowedOrigin]
+        AllowMethods: [GET, POST, PUT, PATCH, DELETE]
+        AllowHeaders: [authorization, content-type]
+      Auth:
+        DefaultAuthorizer: CognitoJwt
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience: [!Ref UserPoolClient]
+
+  # 1つの Lambda でルーティングする（小規模なので関数を分けるより運用が楽）。
+  # 権限（admin / staff）は JWT の cognito:groups を Lambda 側で確認する。
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../server/
+      Handler: index.handler
+      Environment:
+        Variables:
+          CLAUDE_API_KEY_PARAMETER: !Sub /${ClaudeApiKeyParameter}
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Table
+        - SSMParameterReadPolicy:
+            ParameterName: !Ref ClaudeApiKeyParameter
+      Events:
+        ListStaff: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: /api/staff, Method: GET } }
+        ListMenus: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: /api/menus, Method: GET } }
+        ListCustomers: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: /api/customers, Method: GET } }
+        CreateCustomer: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: /api/customers, Method: POST } }
+        UpdateCustomer: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: '/api/customers/{id}', Method: PUT } }
+        ImportCustomers: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: /api/customers/import, Method: POST } }
+        ListBookings: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: /api/bookings, Method: GET } }
+        CreateBooking: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: /api/bookings, Method: POST } }
+        UpdateBooking: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: '/api/bookings/{id}', Method: PUT } }
+        UpdateBookingStatus: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: '/api/bookings/{id}/status', Method: PATCH } }
+        DeleteBooking: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: '/api/bookings/{id}', Method: DELETE } }
+        SummarizeCustomer: { Type: HttpApi, Properties: { ApiId: !Ref HttpApi, Path: '/api/customers/{id}/summary', Method: POST } }
+
+  ApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 30
+
+  # ---- データ（1テーブル設計。詳細は design/architecture.md） ----
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: gsi1pk, AttributeType: S }
+        - { AttributeName: gsi1sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - { AttributeName: gsi1pk, KeyType: HASH }
+            - { AttributeName: gsi1sk, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAt # 予約の重複防止用のロック項目を自動で消す
+        Enabled: true
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  TableName:
+    Value: !Ref Table

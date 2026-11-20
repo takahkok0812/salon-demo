@@ -10,6 +10,7 @@ import { validateBooking, type BookingErrorCode } from '../domain/booking';
 import { bookingFormSchema, type BookingFormValues } from '../domain/schemas';
 import { draftConfirmation } from '../lib/ai';
 import { FieldError } from './FieldError';
+import { useDialog } from '../hooks/useDialog';
 
 interface Props {
   booking: Booking | null; // null = 新規
@@ -36,6 +37,7 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
   const deleteBooking = useDeleteBooking();
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState('');
+  const dialogRef = useDialog<HTMLDivElement>(onClose);
 
   const {
     register,
@@ -121,7 +123,7 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
 
   return (
     <div className="overlay" onMouseDown={onClose}>
-      <div className="modal" role="dialog" aria-label="予約の編集" onMouseDown={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} tabIndex={-1} className="modal" role="dialog" aria-modal="true" aria-label="予約の編集" onMouseDown={(e) => e.stopPropagation()}>
         <form onSubmit={onSubmit} noValidate>
           <div className="modal-head">
             <h2>{booking ? '予約を編集' : '予約を登録'}</h2>

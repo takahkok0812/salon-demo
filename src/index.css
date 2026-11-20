@@ -5,7 +5,7 @@
   --bg: #f3f6fb;
   --line: #e1e7f1;
   --text: #1d2433;
-  --muted: #6b778c;
+  --muted: #56617a; /* 背景色の上で文字のコントラスト比 4.5:1 以上 */
   --danger: #c0392b;
   font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
   color: var(--text);
@@ -88,7 +88,7 @@ main { flex: 1; padding: 16px 20px; }
 }
 .booking b { display: block; }
 .booking small { display: block; color: var(--muted); }
-.booking.visited { opacity: 0.6; }
+.booking.visited { border-left-style: dashed; color: var(--muted); } /* 透明度で薄くすると文字が読みにくくなるので、点線と文字色で区別する */
 .booking.cancelled { background: #f4f4f4; text-decoration: line-through; color: var(--muted); }
 .booking:hover { outline: 2px solid var(--blue); z-index: 2; }
 

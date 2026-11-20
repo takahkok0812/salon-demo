@@ -4,6 +4,7 @@ import type { Customer } from '../types';
 import { customerInputSchema, type CustomerInput } from '../domain/schemas';
 import { useSaveCustomer } from '../api/hooks';
 import { FieldError } from './FieldError';
+import { useDialog } from '../hooks/useDialog';
 
 interface Props {
   customer: Customer; // id が空なら新規
@@ -14,6 +15,7 @@ interface Props {
 /** 顧客情報の登録・編集。入力ルールは擬似APIと同じ Zod スキーマを使う */
 export function CustomerFormModal({ customer, onClose, onSaved }: Props) {
   const saveCustomer = useSaveCustomer();
+  const dialogRef = useDialog<HTMLDivElement>(onClose);
   const {
     register,
     handleSubmit,
@@ -39,7 +41,7 @@ export function CustomerFormModal({ customer, onClose, onSaved }: Props) {
 
   return (
     <div className="overlay" onMouseDown={onClose}>
-      <div className="modal" role="dialog" aria-label="顧客情報" onMouseDown={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} tabIndex={-1} className="modal" role="dialog" aria-modal="true" aria-label="顧客情報" onMouseDown={(e) => e.stopPropagation()}>
         <form onSubmit={onSubmit} noValidate>
           <div className="modal-head">
             <h2>顧客情報</h2>

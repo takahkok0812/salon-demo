@@ -3,6 +3,7 @@ import type { Customer } from '../types';
 import { STATUS_LABEL } from '../types';
 import { useAppData, useImportCustomers } from '../api/hooks';
 import { CustomerFormModal } from './CustomerFormModal';
+import { CsvExportModal } from './CsvExportModal';
 import type { CustomerInput } from '../api/types';
 import { useRole } from '../role';
 import { fmtDateLong, fmtTime, yen } from '../lib/date';
@@ -197,30 +198,7 @@ export function CustomersView({ onToast }: Props) {
       </div>
 
       {csvText && (
-        <div className="overlay" onMouseDown={() => setCsvText('')}>
-          <div className="modal" role="dialog" aria-label="CSV書き出し" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <h2>CSV書き出し（{rows.length}件）</h2>
-              <button className="icon" onClick={() => setCsvText('')} aria-label="閉じる">×</button>
-            </div>
-            <p className="hint">本番版ではファイルとしてダウンロードします。このデモでは内容をコピーして、表計算ソフトに貼り付けられます。</p>
-            <textarea className="draft" rows={12} readOnly value={csvText} />
-            <div className="modal-foot">
-              <span className="spacer" />
-              <button
-                className="primary"
-                onClick={() => {
-                  navigator.clipboard?.writeText(csvText).then(
-                    () => onToast('CSVをコピーしました'),
-                    () => onToast('コピーできませんでした。テキストを選択してコピーしてください'),
-                  );
-                }}
-              >
-                コピー
-              </button>
-            </div>
-          </div>
-        </div>
+        <CsvExportModal csv={csvText} count={rows.length} onClose={() => setCsvText('')} onToast={onToast} />
       )}
       {editing && (
         <CustomerFormModal

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Booking } from '../types';
-import { useStore } from '../store';
+import { useAppData } from '../api/hooks';
 import { CLOSE_HOUR, OPEN_HOUR, SLOT_MIN, addDays, fmtDate, fmtTime, sameDay, startOfWeek } from '../lib/date';
 
 const SLOT_PX = 30;
@@ -10,8 +10,7 @@ interface Props {
 }
 
 export function CalendarView({ onOpen }: Props) {
-  const { state } = useStore();
-  const { data } = state;
+  const data = useAppData();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [staffFilter, setStaffFilter] = useState<string>('all');
   const [showCancelled, setShowCancelled] = useState(false);

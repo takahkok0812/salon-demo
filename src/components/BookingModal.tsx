@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import type { Booking, BookingStatus } from '../types';
 import { STATUS_LABEL } from '../types';
 import { newId, useStore } from '../store';
-import { CLOSE_HOUR, OPEN_HOUR, addMinutes, fmtTime, fromLocalInput, overlaps, toLocalInput } from '../lib/date';
+import { fromLocalInput, toLocalInput } from '../lib/date';
+import { validateBooking } from '../domain/booking';
 import { draftConfirmation } from '../lib/ai';
 
 interface Props {
@@ -49,38 +50,11 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
     };
   }
 
-  function validate(b: Booking): string {
-    if (!b.customerId) return 'お客様を選んでください。';
-    const s = new Date(b.start);
-    if (Number.isNaN(s.getTime())) return '日時を正しく入力してください。';
-    if (s.getDay() === 2) return '火曜日は定休日です。';
-    const end = addMinutes(s, b.minutes);
-    const open = new Date(s);
-    open.setHours(OPEN_HOUR, 0, 0, 0);
-    const close = new Date(s);
-    close.setHours(CLOSE_HOUR, 0, 0, 0);
-    if (s < open || end > close) return `営業時間（${OPEN_HOUR}:00〜${CLOSE_HOUR}:00）内で予約してください。`;
-    if (b.status !== 'cancelled') {
-      const clash = data.bookings.find(
-        (o) =>
-          o.id !== b.id &&
-          o.staffId === b.staffId &&
-          o.status !== 'cancelled' &&
-          overlaps(new Date(o.start), o.minutes, s, b.minutes),
-      );
-      if (clash) {
-        const who = data.customers.find((c) => c.id === clash.customerId)?.name ?? '';
-        return `担当者の予約が重なっています（${fmtTime(new Date(clash.start))}〜 ${who}様）。`;
-      }
-    }
-    return '';
-  }
-
   function save() {
     const b = build();
-    const msg = validate(b);
-    if (msg) {
-      setError(msg);
+    const err = validateBooking(b, data);
+    if (err) {
+      setError(err.message);
       return;
     }
     dispatch({ type: 'saveBooking', booking: b });

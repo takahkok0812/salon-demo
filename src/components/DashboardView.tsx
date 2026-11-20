@@ -2,7 +2,7 @@ import type { Booking } from '../types';
 import { STATUS_LABEL } from '../types';
 import { useStore } from '../store';
 import { addDays, fmtDate, fmtDateLong, fmtTime, sameDay, startOfDay, startOfWeek, yen } from '../lib/date';
-import { visitStats } from '../lib/ai';
+import { cancelRate, findFollowUps, monthSales } from '../domain/dashboard';
 
 interface Props {
   onOpen: (booking: Booking) => void;
@@ -16,7 +16,6 @@ export function DashboardView({ onOpen }: Props) {
   const today = startOfDay(now);
   const weekStart = startOfWeek(now);
   const weekEnd = addDays(weekStart, 7);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const active = data.bookings.filter((b) => b.status !== 'cancelled');
   const todays = active
@@ -26,25 +25,9 @@ export function DashboardView({ onOpen }: Props) {
     const s = new Date(b.start);
     return s >= weekStart && s < weekEnd;
   }).length;
-  const monthSales = data.bookings
-    .filter((b) => b.status === 'visited' && new Date(b.start) >= monthStart && new Date(b.start) <= now)
-    .reduce((sum, b) => sum + (data.menus.find((m) => m.id === b.menuId)?.price ?? 0), 0);
-  const cancelRate = (() => {
-    const past = data.bookings.filter((b) => new Date(b.start) < now);
-    if (!past.length) return 0;
-    return Math.round((past.filter((b) => b.status === 'cancelled').length / past.length) * 100);
-  })();
-
-  // 来店間隔を過ぎていて、先の予約がないお客様（フォロー候補）
-  const followUps = data.customers
-    .map((c) => ({ c, s: visitStats(data, c.id) }))
-    .filter(({ c, s }) => {
-      if (!s.last || !s.intervalDays) return false;
-      const due = new Date(new Date(s.last.start).getTime() + s.intervalDays * 86400000);
-      const hasFuture = data.bookings.some((b) => b.customerId === c.id && b.status === 'reserved' && new Date(b.start) > now);
-      return due < now && !hasFuture;
-    })
-    .slice(0, 6);
+  const sales = monthSales(data, now);
+  const cancelPct = cancelRate(data.bookings, now);
+  const followUps = findFollowUps(data, now);
 
   return (
     <section className="dash">
@@ -59,12 +42,12 @@ export function DashboardView({ onOpen }: Props) {
         </div>
         <div className="kpi">
           <span>今月の売上（来店済み）</span>
-          <b>{isAdmin ? yen(monthSales) : '—'}</b>
+          <b>{isAdmin ? yen(sales) : '—'}</b>
           {!isAdmin && <small className="muted">管理者のみ表示</small>}
         </div>
         <div className="kpi">
           <span>キャンセル率（過去分）</span>
-          <b>{cancelRate}<small>%</small></b>
+          <b>{cancelPct}<small>%</small></b>
         </div>
       </div>
 

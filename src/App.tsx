@@ -85,7 +85,7 @@ export default function App() {
           {({ reset: resetQueries }) => (
             <ErrorBoundary onReset={resetQueries}>
               <Suspense fallback={<p className="panel state-box" role="status">読み込み中…</p>}>
-                {view === 'dashboard' && <DashboardView onOpen={(b) => open(b)} />}
+                {view === 'dashboard' && <DashboardView onOpen={(b) => open(b)} onToast={setToast} />}
                 {view === 'calendar' && <CalendarView onOpen={open} />}
                 {view === 'customers' && <CustomersView onToast={setToast} />}
                 {modal && (

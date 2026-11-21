@@ -18,12 +18,12 @@ export function CustomerFormModal({ customer, onClose, onSaved }: Props) {
   const saveCustomer = useSaveCustomer();
   // スタッフは既存のお客様の連絡先を見られない（APIからも伏せ字で届く）ので、編集もさせない
   const contactLocked = useRole().role === 'staff' && customer.id !== '';
-  const dialogRef = useDialog<HTMLDivElement>(onClose);
+  const dialogRef = useDialog<HTMLDivElement>(() => requestClose());
   const {
     register,
     handleSubmit,
     setError,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<CustomerInput>({
     resolver: zodResolver(customerInputSchema),
     defaultValues: {
@@ -48,13 +48,19 @@ export function CustomerFormModal({ customer, onClose, onSaved }: Props) {
     'aria-describedby': errors[name] ? `customer-${name}-error` : undefined,
   });
 
+
+  /** 入力途中で閉じると内容が消えるので、変更があれば確認してから閉じる */
+  function requestClose() {
+    if (isDirty && !window.confirm('入力した内容は保存されていません。閉じてよろしいですか？')) return;
+    onClose();
+  }
   return (
-    <div className="overlay" onMouseDown={onClose}>
+    <div className="overlay" onMouseDown={requestClose}>
       <div ref={dialogRef} tabIndex={-1} className="modal" role="dialog" aria-modal="true" aria-label="顧客情報" onMouseDown={(e) => e.stopPropagation()}>
         <form onSubmit={onSubmit} noValidate>
           <div className="modal-head">
             <h2>顧客情報</h2>
-            <button type="button" className="icon" onClick={onClose} aria-label="閉じる">×</button>
+            <button type="button" className="icon" onClick={requestClose} aria-label="閉じる">×</button>
           </div>
           <div className="grid2">
             <label className="field"><span>氏名</span>
@@ -95,7 +101,7 @@ export function CustomerFormModal({ customer, onClose, onSaved }: Props) {
           {errors.root && <p className="error" role="alert">{errors.root.message}</p>}
           <div className="modal-foot">
             <span className="spacer" />
-            <button type="button" className="ghost" onClick={onClose}>キャンセル</button>
+            <button type="button" className="ghost" onClick={requestClose}>キャンセル</button>
             <button type="submit" className="primary" disabled={isSubmitting}>{isSubmitting ? '保存中…' : '保存'}</button>
           </div>
         </form>

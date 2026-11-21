@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Role } from './types';
+import { useQueryClient } from '@tanstack/react-query';
 import { setApiRole } from './api/client';
 
 const KEY = 'salon-demo-role';
@@ -21,14 +22,17 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     setApiRole(r);
     return r;
   });
+  const qc = useQueryClient();
   useEffect(() => {
     setApiRole(role);
+    // 顧客の連絡先は権限によってAPIの返す内容が変わるので取り直す
+    void qc.invalidateQueries({ queryKey: ['customers'] });
     try {
       localStorage.setItem(KEY, role);
     } catch {
       // 保存できなくても切り替えは効く
     }
-  }, [role]);
+  }, [role, qc]);
   return <Ctx.Provider value={{ role, setRole }}>{children}</Ctx.Provider>;
 }
 

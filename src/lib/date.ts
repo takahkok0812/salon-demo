@@ -49,6 +49,12 @@ export function fmtTime(d: Date): string {
 }
 
 /** <input type="datetime-local"> 用の文字列 */
+/** 次の30分ちょうどに切り上げる（10:05 → 10:30、10:30 はそのまま） */
+export function ceilToHalfHour(d: Date): Date {
+  const step = 30 * 60_000;
+  return new Date(Math.ceil(d.getTime() / step) * step);
+}
+
 export function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${fmtTime(d)}`;
 }

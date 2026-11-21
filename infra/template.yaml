@@ -4,7 +4,8 @@ Description: >
   サロン予約・顧客管理（本番構成の設計）。
   画面は S3 + CloudFront、API は API Gateway（HTTP API）+ Lambda、データは DynamoDB、ログインは Cognito。
   デモ版ではブラウザ内の擬似API（MSW）が API Gateway + Lambda の役割を代わりに担っている。
-  ※ このテンプレートは設計の記録で、デプロイはしていない（Lambda の実装は server/ に置く想定）。
+  ※ このテンプレートは設計の記録で、デプロイはしていない。定義しているのは API・データ・認証の部分で、
+  画面の配信（S3 + CloudFront）と Lambda の実装（server/ に置く想定、未作成）は含まない。
 
 Parameters:
   Stage:

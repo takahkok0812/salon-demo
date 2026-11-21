@@ -66,6 +66,7 @@ export function CalendarView({ onOpen }: Props) {
         </button>
       </div>
 
+      <div className="calendar-scroll">
       <div className="calendar" style={{ gridTemplateColumns: `56px repeat(7, 1fr)` }}>
         <div className="corner" />
         {days.map((d) => (
@@ -136,7 +137,8 @@ export function CalendarView({ onOpen }: Props) {
           );
         })}
       </div>
-      <p className="hint">空いている枠をクリックすると、その時間で予約を登録できます。担当者ごとに色分けしています。</p>
+      </div>
+      <p className="hint">空いている枠をクリックすると、その時間で予約を登録できます。担当者ごとに色分けしています。スマホでは横にスクロールできます。</p>
     </section>
   );
 }

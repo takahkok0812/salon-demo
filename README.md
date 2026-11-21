@@ -6,7 +6,9 @@
 
 **デモ：https://takahkok0812.github.io/salon-demo/** （右上で「管理者／スタッフ」を切り替えると表示が変わります）
 
-![ダッシュボード](.github/assets/dashboard.png)
+![操作の流れ（予約の重なりチェック → 空き時間で登録 → スタッフ権限の表示）](.github/assets/demo.gif)
+
+約30秒の操作の流れです：ダッシュボード → 予約カレンダー → 重なる時間での登録（エラー表示）→ 空き時間で登録 → スタッフ権限への切り替え。
 
 ## できること
 
@@ -32,7 +34,7 @@
 | フォーム | React Hook Form、Zod |
 | テスト | Vitest、MSW（Node）、Playwright、axe-core |
 | CI | GitHub Actions（型チェック・lint・単体テスト・build・E2E） |
-| 本番構成（設計） | AWS SAM：CloudFront + S3、API Gateway + Lambda、DynamoDB、Cognito |
+| 本番構成（設計） | CloudFront + S3、API Gateway + Lambda、DynamoDB、Cognito（SAM テンプレートは API・データ・認証の部分） |
 
 ## 構成
 
@@ -45,7 +47,7 @@ flowchart LR
   API -. 同じルールを使う .-> D
 ```
 
-デモ版の擬似APIは、本番構成の API Gateway + Lambda の役割を代わりに担っています。業務ルールは React にも MSW にも依存しない純粋な TypeScript なので、そのまま Lambda に持っていけます。本番構成は [design/architecture.md](design/architecture.md) と [infra/template.yaml](infra/template.yaml) にまとめています（デプロイはしていません）。
+デモ版の擬似APIは、本番構成の API Gateway + Lambda の役割を代わりに担っています。業務ルールは React にも MSW にも依存しない純粋な TypeScript です。曜日や営業時間は日本時間を明示して判定するので、UTC で動く Lambda でも同じ結果になります（`npm run test:utc` で、UTC で予約ルールとAPIのテストを実行して確認）。本番構成は [design/architecture.md](design/architecture.md) と [infra/template.yaml](infra/template.yaml) にまとめています（デプロイはしていません）。
 
 ## 設計で考えたこと
 
@@ -65,9 +67,9 @@ flowchart LR
 
 | 種類 | 内容 | 件数 | 実行 |
 | --- | --- | --- | --- |
-| 単体テスト | 予約ルールの境界値、日付計算、CSV、集計、入力スキーマ、サンプルデータがルールを満たすこと、楽観的更新の書き換え | 52 | `npm test` |
-| APIテスト | 擬似APIのステータスコード（422・404・403）、id の採番、CSV取り込み | 9 | `npm test` |
-| E2Eテスト | 予約の登録・重なり・定休日、顧客フォームのエラーと保存、スタッフ権限の表示、楽観的更新の成功と失敗 | 8 | `npm run e2e` |
+| 単体テスト | 予約ルールの境界値、日付計算、CSV、集計、入力スキーマ、サンプルデータがルールを満たすこと、楽観的更新の書き換え、伏せ字 | 55 | `npm test` |
+| APIテスト | 擬似APIのステータスコード（422・404・403）、id の採番、CSV取り込み、ルールのすり抜け防止（所要時間の偽装・過去日・キャンセルからの復帰）、スタッフへの連絡先の伏せ字 | 15 | `npm test`（UTC でも `npm run test:utc`） |
+| E2Eテスト | 予約の登録・重なり・定休日、顧客フォームのエラーと保存、スタッフ権限の表示、楽観的更新の成功と失敗、スマホ幅（Pixel 7）での表示 | 11 | `npm run e2e` |
 | アクセシビリティ | axe（WCAG 2.1 A/AA）で主要な画面とダイアログ、キーボード操作（フォーカス移動・Esc・Tab） | 7 | `npm run e2e` |
 
 - サンプルデータは「今日」を基準に作られるため、単体テストは時間帯を日本時間に固定し、E2E は時計も固定しています。
@@ -88,6 +90,7 @@ flowchart LR
 | [#15](https://github.com/takahkok0812/salon-demo/pull/15) | アクセシビリティを改善し、axe の自動チェックを追加 |
 | [#16](https://github.com/takahkok0812/salon-demo/pull/16) | README と本番構成の設計（AWS SAM、未デプロイ） |
 | [#18](https://github.com/takahkok0812/salon-demo/pull/18) | 予約の状態変更を楽観的更新に（失敗時は元に戻す） |
+| [#19](https://github.com/takahkok0812/salon-demo/pull/19) | 第三者レビューの指摘を修正（スマホ表示、APIのすり抜け、連絡先の伏せ字をAPI側で、タイムゾーン、操作動画） |
 
 ## 動かし方
 
@@ -95,6 +98,7 @@ flowchart LR
 npm install
 npm run dev          # 開発サーバー
 npm test             # 単体テスト・APIテスト
+npm run test:utc     # 予約ルールとAPIのテストを UTC で実行（本番の Lambda と同じ条件）
 npx playwright install chromium
 npm run e2e          # E2Eテスト（ビルドしてから自動で起動）
 npm run build        # dist/ に出力（画面は1ファイル＋擬似API用の mockServiceWorker.js）

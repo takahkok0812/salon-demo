@@ -14,9 +14,6 @@ interface Props {
   onToast: (message: string) => void;
 }
 
-function mask(s: string): string {
-  return s.length <= 4 ? '****' : `${s.slice(0, 3)}****${s.slice(-2)}`;
-}
 
 export function CustomersView({ onToast }: Props) {
   const data = useAppData();
@@ -142,9 +139,9 @@ export function CustomersView({ onToast }: Props) {
             </div>
             <dl className="info">
               <dt>電話</dt>
-              <dd>{isAdmin ? selected.phone : mask(selected.phone)}</dd>
+              <dd>{selected.phone}</dd>
               <dt>メール</dt>
-              <dd>{isAdmin ? selected.email : mask(selected.email)}</dd>
+              <dd>{selected.email}</dd>
               <dt>接客メモ</dt>
               <dd>{selected.note || '—'}</dd>
             </dl>

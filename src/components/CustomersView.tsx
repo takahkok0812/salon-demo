@@ -26,6 +26,7 @@ export function CustomersView({ onToast }: Props) {
   const [summary, setSummary] = useState('');
   const [csvText, setCsvText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   const rows = useMemo(() => {
     const q = query.trim();
@@ -114,6 +115,10 @@ export function CustomersView({ onToast }: Props) {
                 onClick={() => {
                   setSelectedId(c.id);
                   setSummary('');
+                  // 一覧と詳細が縦に並ぶ狭い画面では、選んだお客様の詳細まで移動する
+                  if (window.matchMedia('(max-width: 900px)').matches) {
+                    requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }
                 }}
               >
                 <span className="name">{c.name}</span>
@@ -127,7 +132,7 @@ export function CustomersView({ onToast }: Props) {
         </ul>
       </div>
 
-      <div className="panel detail">
+      <div className="panel detail" ref={detailRef}>
         {selected ? (
           <>
             <div className="detail-head">
@@ -157,6 +162,7 @@ export function CustomersView({ onToast }: Props) {
             </div>
 
             <h3>予約・来店履歴</h3>
+            <div className="table-scroll">
             <table className="history">
               <thead>
                 <tr>
@@ -188,6 +194,7 @@ export function CustomersView({ onToast }: Props) {
                 )}
               </tbody>
             </table>
+            </div>
           </>
         ) : (
           <p className="empty">左の一覧からお客様を選んでください</p>

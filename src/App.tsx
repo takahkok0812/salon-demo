@@ -112,7 +112,7 @@ export default function App() {
         本番構成ではAWS（API Gateway・Lambda・DynamoDB）に保存し、AI機能はClaude APIで生成します。
       </footer>
 
-      {toast && <div className="toast" role="status">{toast}</div>}
+      <div className="toast-region" role="status" aria-live="polite">{toast && <div className="toast">{toast}</div>}</div>
     </div>
   );
 }

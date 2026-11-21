@@ -43,3 +43,20 @@ test.describe('予約の登録', () => {
     await expect(dialog.getByText('火曜日は定休日です。')).toBeVisible();
   });
 });
+
+test.describe('入力途中で閉じるとき', () => {
+  test('入力した内容があれば確認し、キャンセルすれば閉じない', async ({ app }) => {
+    await app.getByRole('button', { name: '予約カレンダー' }).click();
+    await app.getByRole('button', { name: '＋ 予約を登録' }).click();
+    const dialog = app.getByRole('dialog', { name: '予約の編集' });
+    await dialog.locator('textarea[name="memo"]').fill('カラーの相談あり');
+
+    app.once('dialog', (d) => d.dismiss());
+    await dialog.getByRole('button', { name: 'キャンセル' }).click();
+    await expect(dialog).toBeVisible();
+
+    app.once('dialog', (d) => d.accept());
+    await dialog.getByRole('button', { name: 'キャンセル' }).click();
+    await expect(dialog).toHaveCount(0);
+  });
+});

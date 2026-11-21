@@ -33,3 +33,13 @@ test.describe('スマホでの表示', () => {
     expect(value).toMatch(/T\d{2}:(00|30)$/);
   });
 });
+
+test.describe('スマホでの顧客管理', () => {
+  test('お客様を選ぶと、詳細まで移動する', async ({ app }) => {
+    await app.getByRole('button', { name: '顧客管理' }).click();
+    const target = app.locator('ul.rows button.row').nth(3);
+    const name = (await target.locator('.name').innerText()).trim();
+    await target.click();
+    await expect(app.getByRole('heading', { name: `${name} 様` })).toBeInViewport();
+  });
+});

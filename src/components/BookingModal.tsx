@@ -37,7 +37,7 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
   const deleteBooking = useDeleteBooking();
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState('');
-  const dialogRef = useDialog<HTMLDivElement>(onClose);
+  const dialogRef = useDialog<HTMLDivElement>(() => requestClose());
 
   const {
     register,
@@ -45,7 +45,7 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
     getValues,
     setError,
     clearErrors,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<BookingFormValues>({
     resolver: zodResolver(bookingFormSchema),
     defaultValues: {
@@ -122,19 +122,30 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
     'aria-describedby': errors[name] ? `booking-${name}-error` : undefined,
   });
 
+
+  /** 入力途中で閉じると内容が消えるので、変更があれば確認してから閉じる */
+  function requestClose() {
+    if (isDirty && !window.confirm('入力した内容は保存されていません。閉じてよろしいですか？')) return;
+    onClose();
+  }
   return (
-    <div className="overlay" onMouseDown={onClose}>
+    <div className="overlay" onMouseDown={requestClose}>
       <div ref={dialogRef} tabIndex={-1} className="modal" role="dialog" aria-modal="true" aria-label="予約の編集" onMouseDown={(e) => e.stopPropagation()}>
         <form onSubmit={onSubmit} noValidate>
           <div className="modal-head">
             <h2>{booking ? '予約を編集' : '予約を登録'}</h2>
-            <button type="button" className="icon" onClick={onClose} aria-label="閉じる">×</button>
+            <button type="button" className="icon" onClick={requestClose} aria-label="閉じる">×</button>
           </div>
 
-          <label className="field">
-            <span>お客様</span>
-            <input placeholder="名前・カナ・電話番号で検索" value={query} onChange={(e) => setQuery(e.target.value)} />
-            <select size={4} {...register('customerId')} {...invalid('customerId')}>
+          <div className="field">
+            <span id="booking-customer-label">お客様</span>
+            <input
+              placeholder="名前・カナ・電話番号で検索"
+              aria-label="お客様を検索"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <select size={4} aria-labelledby="booking-customer-label" {...register('customerId')} {...invalid('customerId')}>
               {candidates.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}（{c.kana}）
@@ -142,7 +153,7 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
               ))}
             </select>
             <FieldError id="booking-customerId-error" message={errors.customerId?.message} />
-          </label>
+          </div>
 
           <div className="grid2">
             <label className="field">
@@ -218,7 +229,7 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
               <button type="button" className="danger" onClick={remove} disabled={busy}>削除</button>
             )}
             <span className="spacer" />
-            <button type="button" className="ghost" onClick={onClose}>キャンセル</button>
+            <button type="button" className="ghost" onClick={requestClose}>キャンセル</button>
             <button type="submit" className="primary" disabled={busy}>{isSubmitting ? '保存中…' : '保存'}</button>
           </div>
         </form>

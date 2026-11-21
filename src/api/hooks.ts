@@ -36,12 +36,31 @@ export function useSaveBooking() {
   });
 }
 
+/** 予約一覧の中の1件だけ状態を書き換えた新しい配列を返す（楽観的更新で使う） */
+export function withStatus(list: Booking[] | undefined, id: string, status: BookingStatus): Booking[] | undefined {
+  return list?.map((b) => (b.id === id ? { ...b, status } : b));
+}
+
+/**
+ * 予約の状態を変える。APIの応答を待たずに画面を先に変え（楽観的更新）、
+ * 失敗したら元に戻す。最後にサーバーの内容で取り直して、画面とサーバーを必ずそろえる。
+ */
 export function useSetBookingStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: BookingStatus }) =>
       api<Booking>(`bookings/${id}/status`, { method: 'PATCH', body: { status } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.bookings }),
+    onMutate: async ({ id, status }) => {
+      // 取得中のデータが後から届いて、先に書き換えた表示を上書きしないように止める
+      await qc.cancelQueries({ queryKey: keys.bookings });
+      const previous = qc.getQueryData<Booking[]>(keys.bookings);
+      qc.setQueryData<Booking[]>(keys.bookings, (old) => withStatus(old, id, status));
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) qc.setQueryData(keys.bookings, context.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.bookings }),
   });
 }
 

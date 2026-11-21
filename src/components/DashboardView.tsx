@@ -7,9 +7,10 @@ import { cancelRate, findFollowUps, monthSales } from '../domain/dashboard';
 
 interface Props {
   onOpen: (booking: Booking) => void;
+  onToast: (message: string) => void;
 }
 
-export function DashboardView({ onOpen }: Props) {
+export function DashboardView({ onOpen, onToast }: Props) {
   const data = useAppData();
   const { role } = useRole();
   const setStatus = useSetBookingStatus();
@@ -71,8 +72,13 @@ export function DashboardView({ onOpen }: Props) {
                   </button>
                   <span className={`tag ${b.status}`}>{STATUS_LABEL[b.status]}</span>
                   {b.status === 'reserved' && start <= now && (
-                    <button className="ghost small" disabled={setStatus.isPending}
-                      onClick={() => setStatus.mutate({ id: b.id, status: 'visited' })}>
+                    <button className="ghost small"
+                      onClick={() =>
+                        setStatus.mutate(
+                          { id: b.id, status: 'visited' },
+                          { onError: (e) => onToast(`来店済みにできませんでした。${e.message}`) },
+                        )
+                      }>
                       来店済みにする
                     </button>
                   )}

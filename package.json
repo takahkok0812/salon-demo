@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:utc": "TZ=UTC vitest run src/domain/booking.test.ts src/api/handlers.test.ts",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "build:pages": "tsc -b && vite build --outDir docs --emptyOutDir && touch docs/.nojekyll"

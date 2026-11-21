@@ -69,7 +69,9 @@ main { flex: 1; padding: 16px 20px; }
 .check { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 
 /* カレンダー */
-.calendar { display: grid; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+/* 狭い画面では週全体を横にスクロールして見る（列が潰れて予約が読めなくならないように） */
+.calendar-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; }
+.calendar { display: grid; min-width: 960px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .corner, .dayhead { background: #f7f9fd; border-bottom: 1px solid var(--line); }
 .dayhead { padding: 8px; text-align: center; font-weight: 700; border-left: 1px solid var(--line); font-size: 13px; }
 .dayhead small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }
@@ -141,7 +143,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #bcd0f5; border-c
 .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .modal-head h2 { margin: 0; }
 .modal-foot { display: flex; gap: 8px; margin-top: 16px; }
-.field { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; min-width: 0; }
+.field input, .field select, .field textarea { max-width: 100%; }
 .field span { font-size: 12px; color: var(--muted); font-weight: 700; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 
@@ -156,5 +159,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #bcd0f5; border-c
   .two, .split { grid-template-columns: 1fr; }
   .who { margin-left: 0; }
 }
+@media (max-width: 600px) {
+  .grid2 { grid-template-columns: 1fr; }
+  .modal { padding: 14px; }
+}
+.loading { padding: 48px 16px; text-align: center; color: var(--muted); font: 14px/1.6 system-ui, sans-serif; }
 .field-error { color: var(--danger); font-size: 12px; }
 .field input[aria-invalid='true'], .field select[aria-invalid='true'], .field textarea[aria-invalid='true'] { border-color: var(--danger); }

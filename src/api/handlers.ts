@@ -1,5 +1,6 @@
 import { HttpResponse, delay, http } from 'msw';
 import type { Booking, Customer, Role } from '../types';
+import { mask } from '../lib/mask';
 import { bookingInputSchema, bookingStatusSchema, customerInputSchema, firstIssue } from '../domain/schemas';
 import { validateBooking } from '../domain/booking';
 import { commit, db, newId, resetDb } from './db';
@@ -26,13 +27,23 @@ const forbidden = () => error(403, 'forbidden', 'この操作は管理者のみ�
  * 予約の入力を検証する。形と長さは Zod のスキーマ（画面のフォームと共通）、
  * 重なり・営業時間などの業務ルールは validateBooking（画面と共通）で確認する。
  */
-async function parseBooking(request: Request, id: string): Promise<{ booking: Booking } | { response: Response }> {
+async function parseBooking(
+  request: Request,
+  id: string,
+  options: { isNew: boolean },
+): Promise<{ booking: Booking } | { response: Response }> {
   const parsed = bookingInputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return { response: error(422, 'invalid', firstIssue(parsed.error)) };
-  const booking: Booking = { ...parsed.data, id };
   const data = db();
-  if (!data.staff.some((s) => s.id === booking.staffId)) return { response: error(422, 'invalid', '担当者が見つかりません。') };
-  if (!data.menus.some((m) => m.id === booking.menuId)) return { response: error(422, 'invalid', 'メニューが見つかりません。') };
+  if (!data.staff.some((s) => s.id === parsed.data.staffId)) return { response: error(422, 'invalid', '担当者が見つかりません。') };
+  if (!data.customers.some((c) => c.id === parsed.data.customerId)) return { response: error(422, 'invalid', 'お客様が見つかりません。') };
+  const menu = data.menus.find((m) => m.id === parsed.data.menuId);
+  if (!menu) return { response: error(422, 'invalid', 'メニューが見つかりません。') };
+  // 所要時間は送られてきた値を信じず、メニューから決める（短く偽って重なりチェックをすり抜けられないように）
+  const booking: Booking = { ...parsed.data, minutes: menu.minutes, id };
+  if (options.isNew && new Date(booking.start).getTime() < Date.now()) {
+    return { response: error(422, 'past', '過去の日時には新しい予約を登録できません。') };
+  }
   const err = validateBooking(booking, data);
   return err ? { response: error(422, err.code, err.message) } : { booking };
 }
@@ -48,9 +59,14 @@ export const handlers = [
     return HttpResponse.json(db().menus);
   }),
 
-  http.get('*/api/customers', async () => {
+  http.get('*/api/customers', async ({ request }) => {
     await delay(LATENCY_MS);
-    return HttpResponse.json(db().customers);
+    const { customers } = db();
+    // スタッフには連絡先の一部を伏せて返す（画面で隠すだけでなく、データ自体を渡さない）
+    if (roleOf(request) === 'staff') {
+      return HttpResponse.json(customers.map((c) => ({ ...c, phone: mask(c.phone), email: mask(c.email) })));
+    }
+    return HttpResponse.json(customers);
   }),
 
   http.get('*/api/bookings', async () => {
@@ -60,7 +76,7 @@ export const handlers = [
 
   http.post('*/api/bookings', async ({ request }) => {
     await delay(LATENCY_MS);
-    const result = await parseBooking(request, newId('b'));
+    const result = await parseBooking(request, newId('b'), { isNew: true });
     if ('response' in result) return result.response;
     const { booking } = result;
     const data = db();
@@ -72,7 +88,7 @@ export const handlers = [
     await delay(LATENCY_MS);
     const data = db();
     if (!data.bookings.some((b) => b.id === params.id)) return error(404, 'notFound', '予約が見つかりません。');
-    const result = await parseBooking(request, String(params.id));
+    const result = await parseBooking(request, String(params.id), { isNew: false });
     if ('response' in result) return result.response;
     const { booking } = result;
     commit({ ...data, bookings: data.bookings.map((b) => (b.id === booking.id ? booking : b)) });
@@ -87,6 +103,11 @@ export const handlers = [
     const parsed = bookingStatusSchema.safeParse(((await request.json().catch(() => null)) as { status?: unknown } | null)?.status);
     if (!parsed.success) return error(422, 'invalid', firstIssue(parsed.error));
     const updated = { ...current, status: parsed.data };
+    // キャンセルから戻すと、その間に同じ枠へ入った予約と重なることがあるので、業務ルールを確かめ直す
+    if (updated.status !== 'cancelled') {
+      const err = validateBooking(updated, data);
+      if (err) return error(422, err.code, err.message);
+    }
     commit({ ...data, bookings: data.bookings.map((b) => (b.id === updated.id ? updated : b)) });
     return HttpResponse.json(updated);
   }),
@@ -115,10 +136,14 @@ export const handlers = [
     const data = db();
     const current = data.customers.find((c) => c.id === params.id);
     if (!current) return error(404, 'notFound', 'お客様が見つかりません。');
-    const parsed = customerInputSchema.safeParse(await request.json().catch(() => null));
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    // スタッフは連絡先を見られないので、連絡先は変更させず今の値を使う
+    const input = roleOf(request) === 'staff' && body ? { ...body, phone: current.phone, email: current.email } : body;
+    const parsed = customerInputSchema.safeParse(input);
     if (!parsed.success) return error(422, 'invalid', firstIssue(parsed.error));
     const customer: Customer = { ...current, ...parsed.data, id: current.id };
     commit({ ...data, customers: data.customers.map((c) => (c.id === customer.id ? customer : c)) });
+    if (roleOf(request) === 'staff') return HttpResponse.json({ ...customer, phone: mask(customer.phone), email: mask(customer.email) });
     return HttpResponse.json(customer);
   }),
 

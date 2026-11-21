@@ -5,6 +5,7 @@ import { customerInputSchema, type CustomerInput } from '../domain/schemas';
 import { useSaveCustomer } from '../api/hooks';
 import { FieldError } from './FieldError';
 import { useDialog } from '../hooks/useDialog';
+import { useRole } from '../role';
 
 interface Props {
   customer: Customer; // id が空なら新規
@@ -15,6 +16,8 @@ interface Props {
 /** 顧客情報の登録・編集。入力ルールは擬似APIと同じ Zod スキーマを使う */
 export function CustomerFormModal({ customer, onClose, onSaved }: Props) {
   const saveCustomer = useSaveCustomer();
+  // スタッフは既存のお客様の連絡先を見られない（APIからも伏せ字で届く）ので、編集もさせない
+  const contactLocked = useRole().role === 'staff' && customer.id !== '';
   const dialogRef = useDialog<HTMLDivElement>(onClose);
   const {
     register,
@@ -23,7 +26,13 @@ export function CustomerFormModal({ customer, onClose, onSaved }: Props) {
     formState: { errors, isSubmitting },
   } = useForm<CustomerInput>({
     resolver: zodResolver(customerInputSchema),
-    defaultValues: { name: customer.name, kana: customer.kana, phone: customer.phone, email: customer.email, note: customer.note },
+    defaultValues: {
+      name: customer.name,
+      kana: customer.kana,
+      phone: contactLocked ? '' : customer.phone,
+      email: contactLocked ? '' : customer.email,
+      note: customer.note,
+    },
   });
 
   const onSubmit = handleSubmit((values) =>
@@ -56,15 +65,29 @@ export function CustomerFormModal({ customer, onClose, onSaved }: Props) {
               <input {...field('kana')} />
               <FieldError id="customer-kana-error" message={errors.kana?.message} />
             </label>
-            <label className="field"><span>電話番号</span>
-              <input type="tel" {...field('phone')} />
-              <FieldError id="customer-phone-error" message={errors.phone?.message} />
-            </label>
-            <label className="field"><span>メール</span>
-              <input type="email" {...field('email')} />
-              <FieldError id="customer-email-error" message={errors.email?.message} />
-            </label>
+            {contactLocked ? (
+              <>
+                <label className="field"><span>電話番号</span>
+                  <input type="tel" value={customer.phone} readOnly aria-readonly="true" />
+                </label>
+                <label className="field"><span>メール</span>
+                  <input type="email" value={customer.email} readOnly aria-readonly="true" />
+                </label>
+              </>
+            ) : (
+              <>
+                <label className="field"><span>電話番号</span>
+                  <input type="tel" {...field('phone')} />
+                  <FieldError id="customer-phone-error" message={errors.phone?.message} />
+                </label>
+                <label className="field"><span>メール</span>
+                  <input type="email" {...field('email')} />
+                  <FieldError id="customer-email-error" message={errors.email?.message} />
+                </label>
+              </>
+            )}
           </div>
+          {contactLocked && <p className="hint">連絡先の変更は管理者のみ行えます。</p>}
           <label className="field"><span>接客メモ</span>
             <textarea rows={3} {...field('note')} />
             <FieldError id="customer-note-error" message={errors.note?.message} />

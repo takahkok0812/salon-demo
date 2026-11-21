@@ -45,22 +45,32 @@ export function withStatus(list: Booking[] | undefined, id: string, status: Book
  * 予約の状態を変える。APIの応答を待たずに画面を先に変え（楽観的更新）、
  * 失敗したら元に戻す。最後にサーバーの内容で取り直して、画面とサーバーを必ずそろえる。
  */
+const STATUS_MUTATION = ['setBookingStatus'] as const;
+
 export function useSetBookingStatus() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: STATUS_MUTATION,
     mutationFn: ({ id, status }: { id: string; status: BookingStatus }) =>
       api<Booking>(`bookings/${id}/status`, { method: 'PATCH', body: { status } }),
     onMutate: async ({ id, status }) => {
       // 取得中のデータが後から届いて、先に書き換えた表示を上書きしないように止める
       await qc.cancelQueries({ queryKey: keys.bookings });
-      const previous = qc.getQueryData<Booking[]>(keys.bookings);
+      const previousStatus = qc.getQueryData<Booking[]>(keys.bookings)?.find((b) => b.id === id)?.status;
       qc.setQueryData<Booking[]>(keys.bookings, (old) => withStatus(old, id, status));
-      return { previous };
+      return { previousStatus };
     },
-    onError: (_error, _variables, context) => {
-      if (context?.previous) qc.setQueryData(keys.bookings, context.previous);
+    onError: (_error, { id }, context) => {
+      // 一覧全体ではなく、失敗した1件だけを元に戻す（同時に押したほかの行の変更は消さない）
+      const previousStatus = context?.previousStatus;
+      if (previousStatus) qc.setQueryData<Booking[]>(keys.bookings, (old) => withStatus(old, id, previousStatus));
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.bookings }),
+    onSettled: () => {
+      // ほかの変更がまだ送信中なら取り直さない。最後の1件が終わったときにまとめて取り直す
+      if (qc.isMutating({ mutationKey: STATUS_MUTATION }) === 1) {
+        return qc.invalidateQueries({ queryKey: keys.bookings });
+      }
+    },
   });
 }
 

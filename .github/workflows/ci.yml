@@ -21,6 +21,8 @@ jobs:
         run: npm run lint
       - name: 単体テスト
         run: npm test
+      - name: 単体テスト（UTC。本番の Lambda と同じタイムゾーンで予約ルールを確認）
+        run: npm run test:utc
       - name: build
         run: npx vite build
 

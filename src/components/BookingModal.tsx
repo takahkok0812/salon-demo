@@ -5,7 +5,7 @@ import type { Booking, BookingStatus } from '../types';
 import { STATUS_LABEL } from '../types';
 import { useAppData, useDeleteBooking, useSaveBooking } from '../api/hooks';
 import { useRole } from '../role';
-import { fromLocalInput, toLocalInput } from '../lib/date';
+import { ceilToHalfHour, fromLocalInput, toLocalInput } from '../lib/date';
 import { validateBooking, type BookingErrorCode } from '../domain/booking';
 import { bookingFormSchema, type BookingFormValues } from '../domain/schemas';
 import { draftConfirmation } from '../lib/ai';
@@ -52,7 +52,7 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
       customerId: booking?.customerId ?? '',
       staffId: booking?.staffId ?? defaultStaffId ?? data.staff[0].id,
       menuId: booking?.menuId ?? data.menus[0].id,
-      start: toLocalInput(booking ? new Date(booking.start) : (defaultStart ?? new Date())),
+      start: toLocalInput(booking ? new Date(booking.start) : (defaultStart ?? ceilToHalfHour(new Date()))),
       status: booking?.status ?? 'reserved',
       memo: booking?.memo ?? '',
     },
@@ -100,6 +100,7 @@ export function BookingModal({ booking, defaultStart, defaultStaffId, onClose, o
 
   function remove() {
     if (!booking) return;
+    if (!window.confirm('この予約を削除します。元に戻せません。よろしいですか？')) return;
     deleteBooking.mutate(booking.id, {
       onSuccess: () => onSaved('予約を削除しました'),
       onError: (e) => setError('root', { message: e.message }),

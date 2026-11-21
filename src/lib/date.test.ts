@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { overlaps, startOfWeek } from './date';
+import { ceilToHalfHour, overlaps, startOfWeek } from './date';
 
 describe('startOfWeek', () => {
   it('月曜始まりで週の初日を返す', () => {
@@ -24,5 +24,13 @@ describe('overlaps', () => {
 
   it('終わりと始まりが接しているだけなら false', () => {
     expect(overlaps(at('13:00'), 60, at('14:00'), 60)).toBe(false);
+  });
+});
+
+describe('ceilToHalfHour（予約の開始日時の初期値）', () => {
+  it('次の30分ちょうどに切り上げ、ちょうどのときはそのまま', () => {
+    expect(ceilToHalfHour(new Date('2026-11-25T13:40:00+09:00')).toISOString()).toBe(new Date('2026-11-25T14:00:00+09:00').toISOString());
+    expect(ceilToHalfHour(new Date('2026-11-25T13:05:00+09:00')).toISOString()).toBe(new Date('2026-11-25T13:30:00+09:00').toISOString());
+    expect(ceilToHalfHour(new Date('2026-11-25T13:30:00+09:00')).toISOString()).toBe(new Date('2026-11-25T13:30:00+09:00').toISOString());
   });
 });
